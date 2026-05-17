@@ -5,7 +5,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const mongoose = require("mongoose");
 
 const { smartSignal } = require("./signals");
-const { generateCloses } = require("./market");
+const { generateMarkets, generateCloses } = require("./market");
 const Signal = require("./models/Signal");
 
 // ===============================
@@ -14,17 +14,17 @@ const Signal = require("./models/Signal");
 const userState = {};
 
 // ===============================
-// CHECK ENV
+// ENV CHECK
 // ===============================
-console.log("🚀 OTC BOT STARTING...");
+console.log("🚀 BOT STARTING...");
 
-if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
+if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_KEY) {
   console.log("❌ Missing ENV variables");
   process.exit(1);
 }
 
 // ===============================
-// MONGO
+// MONGO DB
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
   .then(() => console.log("✅ MongoDB Connected"))
@@ -34,16 +34,12 @@ mongoose.connect(process.env.MONGO_URL)
   });
 
 // ===============================
-// EXPRESS SERVER (RAILWAY)
+// EXPRESS (RAILWAY REQUIRED)
 // ===============================
 const app = express();
 
 app.get("/", (req, res) => {
   res.send("🚀 OTC BOT RUNNING");
-});
-
-app.get("/status", (req, res) => {
-  res.json({ status: "ONLINE" });
 });
 
 const PORT = process.env.PORT || 3000;
@@ -60,13 +56,14 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
 });
 
 // ===============================
-// START COMMAND
+// START
 // ===============================
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id,
-`🚀 OTC AI BOT
 
-Start signal analysis 👇`,
+  bot.sendMessage(msg.chat.id,
+`🚀 OTC AI TRADING BOT
+
+Start analysis 👇`,
 {
   reply_markup: {
     inline_keyboard: [
@@ -90,31 +87,54 @@ bot.on("callback_query", async (query) => {
     // =========================
     if (query.data === "start") {
 
-      userState[chatId] = {};
-
       return bot.sendMessage(chatId,
-`📊 SELECT MARKET`,
+`⚡ MARKET SCANNER`,
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "BTC/USDT", callback_data: "m_btc" }],
-      [{ text: "ETH/USDT", callback_data: "m_eth" }],
-      [{ text: "OTC", callback_data: "m_otc" }]
+      [{ text: "🔄 GENERATE REAL MARKETS", callback_data: "gen_market" }]
     ]
   }
 });
     }
 
     // =========================
-    // STEP 2: MARKET
+    // STEP 2: GENERATE REAL MARKETS (TWELVE DATA)
+    // =========================
+    if (query.data === "gen_market") {
+
+      const loading = await bot.sendMessage(chatId,
+`⚡ SCANNING REAL MARKETS...
+📡 Twelve Data API`);
+
+      const markets = await generateMarkets();
+
+      userState[chatId] = { markets };
+
+      return bot.editMessageText(
+`📊 SELECT MARKET`,
+{
+  chat_id: chatId,
+  message_id: loading.message_id,
+  reply_markup: {
+    inline_keyboard: markets.map(m => ([
+      { text: m, callback_data: "m_" + m }
+    ]))
+  }
+});
+    }
+
+    // =========================
+    // STEP 3: MARKET SELECT
     // =========================
     if (query.data.startsWith("m_")) {
 
-      const market = query.data.split("_")[1];
+      const market = query.data.replace("m_", "");
+
       userState[chatId].market = market;
 
       return bot.sendMessage(chatId,
-`📈 SELECT TIMEFRAME (CANDLES)`,
+`📈 SELECT TIMEFRAME`,
 {
   reply_markup: {
     inline_keyboard: [
@@ -127,48 +147,40 @@ bot.on("callback_query", async (query) => {
     }
 
     // =========================
-    // STEP 3: TIMEFRAME + ANALYSIS
+    // STEP 4: TIMEFRAME + ANALYSIS (REAL SIGNAL ENGINE)
     // =========================
     if (query.data.startsWith("t_")) {
 
       const timeframe = query.data.split("_")[1];
-      const market = userState[chatId].market || "btc";
+      const market = userState[chatId].market || "BTC/USD";
 
       const loading = await bot.sendMessage(chatId,
-`⚡ ANALYSING MARKET...
+`⚡ ANALYSING REAL MARKET...
 
-📊 Market: ${market.toUpperCase()}
-📈 Candles: ${timeframe}
+📊 Market: ${market}
+📈 Timeframe: ${timeframe}
+⏳ Processing 12s engine...`);
 
-⏳ Processing...`);
-
-      // ALWAYS FIXED 12 SEC ANALYSIS
       setTimeout(async () => {
 
-        const closes = generateCloses();
+        const closes = await generateCloses(
+          market,
+          timeframe
+        );
+
         const result = smartSignal(closes);
 
-        // SAVE SAFE
-        try {
-          await Signal.create({
-            signal: result.signal,
-            confidence: result.confidence
-          });
-        } catch (e) {
-          console.log("DB ERROR:", e.message);
-        }
-
         await bot.editMessageText(
-`📊 SIGNAL RESULT
+`📊 REAL MARKET SIGNAL
 
-📈 Market: ${market.toUpperCase()}
-📊 Timeframe (candles): ${timeframe}
+📈 Market: ${market}
+📊 Timeframe: ${timeframe}
 
 ${result.signal}
 🎯 Probability: ${result.confidence}%
 
-⚡ Engine: RSI + EMA
-⏱ Analysis: 12 seconds`,
+⚡ Source: Twelve Data API
+⏱ Engine: RSI + EMA + Momentum`,
           {
             chat_id: chatId,
             message_id: loading.message_id
