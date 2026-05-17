@@ -1,5 +1,6 @@
 require("dotenv").config();
 
+const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const mongoose = require("mongoose");
 
@@ -10,11 +11,10 @@ const Signal = require("./models/Signal");
 // ===============================
 // CHECK ENV
 // ===============================
-console.log("BOT_TOKEN =", process.env.BOT_TOKEN ? "OK" : "MISSING");
-console.log("MONGO_URL =", process.env.MONGO_URL ? "OK" : "MISSING");
+console.log("🚀 BOT STARTING...");
 
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
-  console.log("❌ Missing environment variables");
+  console.log("❌ Missing ENV variables");
   process.exit(1);
 }
 
@@ -23,9 +23,47 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
   .then(() => console.log("✅ MongoDB Connected"))
-  .catch(err => {
-    console.log("❌ MongoDB Error:", err.message);
+  .catch(err => console.log("❌ Mongo Error:", err.message));
+
+// ===============================
+// EXPRESS SERVER (RAILWAY NEEDS THIS)
+// ===============================
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("🚀 OTC BOT RUNNING");
+});
+
+app.get("/status", (req, res) => {
+  res.json({
+    status: "ONLINE",
+    bot: "OTC AI BOT"
   });
+});
+
+app.get("/signal", (req, res) => {
+  try {
+    const closes = generateCloses();
+    const result = smartSignal(closes);
+
+    res.json({
+      success: true,
+      signal: result.signal,
+      confidence: result.confidence
+    });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
+// ===============================
+// START SERVER
+// ===============================
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("🌐 Server running on port " + PORT);
+});
 
 // ===============================
 // TELEGRAM BOT
@@ -34,16 +72,12 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
   polling: true
 });
 
-// ===============================
 // START COMMAND
-// ===============================
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id,
-`🚀 OTC AI SIGNAL BOT
+`🚀 OTC AI BOT
 
-⚡ Instant BUY / SELL signals
-📊 Smart analysis engine
-🤖 RSI strategy active`,
+Clique pour recevoir un signal.`,
 {
   reply_markup: {
     inline_keyboard: [
@@ -53,9 +87,7 @@ bot.onText(/\/start/, (msg) => {
 });
 });
 
-// ===============================
 // SIGNAL BUTTON
-// ===============================
 bot.on("callback_query", async (query) => {
 
   const chatId = query.message.chat.id;
@@ -64,34 +96,27 @@ bot.on("callback_query", async (query) => {
 
     bot.sendMessage(chatId, "⚡ Analysing market...");
 
-    setTimeout(async () => {
+    try {
 
-      try {
+      const closes = generateCloses();
+      const result = smartSignal(closes);
 
-        const closes = generateCloses();
-        const result = smartSignal(closes);
+      await Signal.create({
+        signal: result.signal,
+        confidence: result.confidence
+      });
 
-        // save to DB
-        await Signal.create({
-          signal: result.signal,
-          confidence: result.confidence
-        });
-
-        bot.sendMessage(chatId,
-`📊 SIGNAL RESULT
+      bot.sendMessage(chatId,
+`📊 SIGNAL
 
 ${result.signal}
 
-🎯 Confidence: ${result.confidence}%
-💱 Pair: BTCUSDT OTC
-⏰ Timeframe: 1m`
-        );
+🎯 Confidence: ${result.confidence}%`
+      );
 
-      } catch (error) {
-        console.log("ERROR:", error.message);
-        bot.sendMessage(chatId, "❌ Error generating signal");
-      }
-
-    }, 2000);
+    } catch (error) {
+      console.log("ERROR:", error.message);
+      bot.sendMessage(chatId, "❌ Error generating signal");
+    }
   }
 });
