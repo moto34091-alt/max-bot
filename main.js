@@ -19,14 +19,17 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
 }
 
 // ===============================
-// MONGO CONNECT
+// MONGO CONNECT (SAFE)
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
   .then(() => console.log("✅ MongoDB Connected"))
-  .catch(err => console.log("❌ Mongo Error:", err.message));
+  .catch(err => {
+    console.log("❌ Mongo Error:", err.message);
+    process.exit(1);
+  });
 
 // ===============================
-// EXPRESS SERVER (RAILWAY NEEDS THIS)
+// EXPRESS SERVER
 // ===============================
 const app = express();
 
@@ -44,24 +47,31 @@ app.get("/status", (req, res) => {
 app.get("/signal", (req, res) => {
   try {
     const closes = generateCloses();
-    const result = smartSignal(closes);
+    const result = smartSignal(closes) || {
+      signal: "WAIT",
+      confidence: 50
+    };
 
     res.json({
       success: true,
       signal: result.signal,
       confidence: result.confidence
     });
+
   } catch (err) {
-    res.json({ success: false, error: err.message });
+    res.json({
+      success: false,
+      error: err.message
+    });
   }
 });
 
 // ===============================
-// START SERVER
+// START SERVER (RAILWAY FIX)
 // ===============================
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log("🌐 Server running on port " + PORT);
 });
 
@@ -72,7 +82,9 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
   polling: true
 });
 
+// ===============================
 // START COMMAND
+// ===============================
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id,
 `🚀 OTC AI BOT
@@ -87,19 +99,25 @@ Clique pour recevoir un signal.`,
 });
 });
 
-// SIGNAL BUTTON
+// ===============================
+// CALLBACK BUTTON (FIXED)
+// ===============================
 bot.on("callback_query", async (query) => {
 
-  const chatId = query.message.chat.id;
+  try {
 
-  if (query.data === "signal") {
+    const chatId = query.message.chat.id;
 
-    bot.sendMessage(chatId, "⚡ Analysing market...");
+    if (query.data === "signal") {
 
-    try {
+      bot.sendMessage(chatId, "⚡ Analysing market...");
 
       const closes = generateCloses();
-      const result = smartSignal(closes);
+
+      const result = smartSignal(closes) || {
+        signal: "WAIT",
+        confidence: 50
+      };
 
       await Signal.create({
         signal: result.signal,
@@ -107,16 +125,16 @@ bot.on("callback_query", async (query) => {
       });
 
       bot.sendMessage(chatId,
-`📊 SIGNAL
+`📊 SIGNAL RESULT
 
 ${result.signal}
 
 🎯 Confidence: ${result.confidence}%`
       );
-
-    } catch (error) {
-      console.log("ERROR:", error.message);
-      bot.sendMessage(chatId, "❌ Error generating signal");
     }
+
+  } catch (error) {
+    console.log("CALLBACK ERROR:", error.message);
+    bot.sendMessage(query.message.chat.id, "❌ Error generating signal");
   }
 });
