@@ -9,14 +9,14 @@ const { generateCloses } = require("./market");
 const Signal = require("./models/Signal");
 
 // ===============================
-// STATE USER (MENU FLOW)
+// USER STATE
 // ===============================
 const userState = {};
 
 // ===============================
 // CHECK ENV
 // ===============================
-console.log("🚀 BOT STARTING...");
+console.log("🚀 OTC BOT STARTING...");
 
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
   console.log("❌ Missing ENV variables");
@@ -42,7 +42,10 @@ app.get("/", (req, res) => {
   res.send("🚀 OTC BOT RUNNING");
 });
 
-// ===============================
+app.get("/status", (req, res) => {
+  res.json({ status: "ONLINE" });
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
@@ -57,24 +60,24 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
 });
 
 // ===============================
-// START
+// START COMMAND
 // ===============================
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id,
 `🚀 OTC AI BOT
 
-Click to start signal analysis 👇`,
+Start signal analysis 👇`,
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "🚀 GET SIGNAL", callback_data: "signal" }]
+      [{ text: "🚀 GET SIGNAL", callback_data: "start" }]
     ]
   }
 });
 });
 
 // ===============================
-// CALLBACK FLOW SYSTEM
+// CALLBACK FLOW
 // ===============================
 bot.on("callback_query", async (query) => {
 
@@ -83,19 +86,20 @@ bot.on("callback_query", async (query) => {
   try {
 
     // =========================
-    // STEP 1: GET SIGNAL
+    // STEP 1: START
     // =========================
-    if (query.data === "signal") {
+    if (query.data === "start") {
 
       userState[chatId] = {};
 
       return bot.sendMessage(chatId,
-`📊 CHOOSE MARKET`,
+`📊 SELECT MARKET`,
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "BTC/USDT OTC", callback_data: "market_btc" }],
-      [{ text: "ETH/USDT OTC", callback_data: "market_eth" }]
+      [{ text: "BTC/USDT", callback_data: "m_btc" }],
+      [{ text: "ETH/USDT", callback_data: "m_eth" }],
+      [{ text: "OTC", callback_data: "m_otc" }]
     ]
   }
 });
@@ -104,44 +108,47 @@ bot.on("callback_query", async (query) => {
     // =========================
     // STEP 2: MARKET
     // =========================
-    if (query.data.startsWith("market_")) {
+    if (query.data.startsWith("m_")) {
 
       const market = query.data.split("_")[1];
-
       userState[chatId].market = market;
 
       return bot.sendMessage(chatId,
-`⏱ SELECT TIMEFRAME`,
+`📈 SELECT TIMEFRAME (CANDLES)`,
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "1 MIN", callback_data: "time_1" }],
-      [{ text: "5 MIN", callback_data: "time_5" }],
-      [{ text: "15 MIN", callback_data: "time_15" }]
+      [{ text: "1m candles", callback_data: "t_1m" }],
+      [{ text: "5m candles", callback_data: "t_5m" }],
+      [{ text: "15m candles", callback_data: "t_15m" }]
     ]
   }
 });
     }
 
     // =========================
-    // STEP 3: TIME + ANALYSIS
+    // STEP 3: TIMEFRAME + ANALYSIS
     // =========================
-    if (query.data.startsWith("time_")) {
+    if (query.data.startsWith("t_")) {
 
-      const time = query.data.split("_")[1];
-      const market = userState[chatId].market || "BTC";
+      const timeframe = query.data.split("_")[1];
+      const market = userState[chatId].market || "btc";
 
       const loading = await bot.sendMessage(chatId,
 `⚡ ANALYSING MARKET...
-📊 Market: ${market.toUpperCase()}
-⏱ Timeframe: ${time}m`);
 
+📊 Market: ${market.toUpperCase()}
+📈 Candles: ${timeframe}
+
+⏳ Processing...`);
+
+      // ALWAYS FIXED 12 SEC ANALYSIS
       setTimeout(async () => {
 
         const closes = generateCloses();
         const result = smartSignal(closes);
 
-        // SAVE DB (SAFE)
+        // SAVE SAFE
         try {
           await Signal.create({
             signal: result.signal,
@@ -155,10 +162,13 @@ bot.on("callback_query", async (query) => {
 `📊 SIGNAL RESULT
 
 📈 Market: ${market.toUpperCase()}
-⏱ Timeframe: ${time}m
+📊 Timeframe (candles): ${timeframe}
 
 ${result.signal}
-🎯 Probability: ${result.confidence}%`,
+🎯 Probability: ${result.confidence}%
+
+⚡ Engine: RSI + EMA
+⏱ Analysis: 12 seconds`,
           {
             chat_id: chatId,
             message_id: loading.message_id
@@ -168,6 +178,7 @@ ${result.signal}
         userState[chatId] = {};
 
       }, 12000);
+
     }
 
   } catch (error) {
