@@ -4,20 +4,29 @@ const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const mongoose = require("mongoose");
 
-const { smartSignal } = require("./signals");
-const { generateMarkets, generateCloses } = require("./market");
-const Signal = require("./models/Signal");
+// ⚠️ SAFE IMPORTS (évite crash MODULE_NOT_FOUND)
+let smartSignal, generateMarkets, generateCloses, Signal;
 
+try {
+  ({ smartSignal } = require("./signals"));
+  ({ generateMarkets, generateCloses } = require("./market"));
+  Signal = require("./models/Signal");
+} catch (e) {
+  console.log("❌ IMPORT ERROR:", e.message);
+  process.exit(1);
+}
+
+// ===============================
 const userState = {};
 
 // ===============================
 console.log("🚀 BOT STARTING...");
 
 // ===============================
-// CHECK ENV
+// ENV CHECK
 // ===============================
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_KEY) {
-  console.log("❌ Missing ENV");
+  console.log("❌ Missing ENV variables");
   process.exit(1);
 }
 
@@ -25,25 +34,25 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_
 // MONGO
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
-  .then(() => console.log("✅ MongoDB OK"))
+  .then(() => console.log("✅ MongoDB CONNECTED"))
   .catch(err => {
     console.log("❌ Mongo ERROR:", err.message);
     process.exit(1);
   });
 
 // ===============================
-// EXPRESS (RAILWAY)
+// EXPRESS (RAILWAY FIX)
 // ===============================
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("🚀 OTC BOT RUNNING");
+  res.send("🚀 BOT RUNNING");
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("🌐 Server OK " + PORT);
+  console.log("🌐 SERVER OK:", PORT);
 });
 
 // ===============================
@@ -55,8 +64,11 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
 
 // ===============================
 bot.onText(/\/start/, (msg) => {
+
   bot.sendMessage(msg.chat.id,
-`🚀 OTC AI BOT`,
+`🚀 OTC AI BOT
+
+Start analysis 👇`,
 {
   reply_markup: {
     inline_keyboard: [
@@ -67,7 +79,7 @@ bot.onText(/\/start/, (msg) => {
 });
 
 // ===============================
-// FLOW
+// CALLBACK FLOW
 // ===============================
 bot.on("callback_query", async (query) => {
 
@@ -75,21 +87,21 @@ bot.on("callback_query", async (query) => {
 
   try {
 
-    // START
+    // STEP 1
     if (query.data === "start") {
 
       return bot.sendMessage(chatId,
-`⚡ SCANNER`,
+`⚡ MARKET SCANNER`,
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "🔄 GENERATE MARKETS", callback_data: "gen_market" }]
+      [{ text: "🔄 GENERATE REAL MARKETS", callback_data: "gen_market" }]
     ]
   }
 });
     }
 
-    // GENERATE MARKETS
+    // STEP 2
     if (query.data === "gen_market") {
 
       const markets = await generateMarkets();
@@ -107,7 +119,7 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // SELECT MARKET
+    // STEP 3
     if (query.data.startsWith("m_")) {
 
       const market = query.data.replace("m_", "");
@@ -126,7 +138,7 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // ANALYSIS
+    // STEP 4
     if (query.data.startsWith("t_")) {
 
       const timeframe = query.data.split("_")[1];
@@ -143,8 +155,18 @@ bot.on("callback_query", async (query) => {
         const closes = await generateCloses(market, timeframe);
         const result = smartSignal(closes);
 
+        // SAVE SAFE
+        try {
+          await Signal.create({
+            signal: result.signal,
+            confidence: result.confidence
+          });
+        } catch (e) {
+          console.log("DB ERROR:", e.message);
+        }
+
         await bot.editMessageText(
-`📊 SIGNAL
+`📊 SIGNAL RESULT
 
 📈 ${market}
 📊 ${timeframe}
@@ -162,7 +184,7 @@ ${result.signal}
     }
 
   } catch (err) {
-    console.log("ERROR:", err.message);
-    bot.sendMessage(chatId, "❌ Error bot");
+    console.log("BOT ERROR:", err.message);
+    bot.sendMessage(chatId, "❌ ERROR");
   }
 });
