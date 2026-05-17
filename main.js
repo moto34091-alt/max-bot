@@ -1,190 +1,39 @@
-require("dotenv").config();
+const axios = require("axios");
 
-const express = require("express");
-const TelegramBot = require("node-telegram-bot-api");
-const mongoose = require("mongoose");
+const API_KEY = process.env.TWELVE_API_KEY;
 
-// ⚠️ SAFE IMPORTS (évite crash MODULE_NOT_FOUND)
-let smartSignal, generateMarkets, generateCloses, Signal;
-
-try {
-  ({ smartSignal } = require("./signals"));
-  ({ generateMarkets, generateCloses } = require("./market"));
-  Signal = require("./models/Signal");
-} catch (e) {
-  console.log("❌ IMPORT ERROR:", e.message);
-  process.exit(1);
+// ===============================
+async function generateMarkets() {
+  return ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD", "BNB/USD"];
 }
 
 // ===============================
-const userState = {};
-
-// ===============================
-console.log("🚀 BOT STARTING...");
-
-// ===============================
-// ENV CHECK
-// ===============================
-if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_KEY) {
-  console.log("❌ Missing ENV variables");
-  process.exit(1);
-}
-
-// ===============================
-// MONGO
-// ===============================
-mongoose.connect(process.env.MONGO_URL)
-  .then(() => console.log("✅ MongoDB CONNECTED"))
-  .catch(err => {
-    console.log("❌ Mongo ERROR:", err.message);
-    process.exit(1);
-  });
-
-// ===============================
-// EXPRESS (RAILWAY FIX)
-// ===============================
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("🚀 BOT RUNNING");
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("🌐 SERVER OK:", PORT);
-});
-
-// ===============================
-// TELEGRAM BOT
-// ===============================
-const bot = new TelegramBot(process.env.BOT_TOKEN, {
-  polling: true
-});
-
-// ===============================
-bot.onText(/\/start/, (msg) => {
-
-  bot.sendMessage(msg.chat.id,
-`🚀 OTC AI BOT
-
-Start analysis 👇`,
-{
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: "🚀 GET SIGNAL", callback_data: "start" }]
-    ]
-  }
-});
-});
-
-// ===============================
-// CALLBACK FLOW
-// ===============================
-bot.on("callback_query", async (query) => {
-
-  const chatId = query.message.chat.id;
+async function generateCloses(symbol = "BTC/USD", interval = "1min") {
 
   try {
+    const res = await axios.get("https://api.twelvedata.com/time_series", {
+      params: {
+        symbol,
+        interval,
+        outputsize: 20,
+        apikey: API_KEY
+      }
+    });
 
-    // STEP 1
-    if (query.data === "start") {
-
-      return bot.sendMessage(chatId,
-`⚡ MARKET SCANNER`,
-{
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: "🔄 GENERATE REAL MARKETS", callback_data: "gen_market" }]
-    ]
-  }
-});
+    if (!res.data || !res.data.values) {
+      throw new Error("NO DATA");
     }
 
-    // STEP 2
-    if (query.data === "gen_market") {
-
-      const markets = await generateMarkets();
-
-      userState[chatId] = { markets };
-
-      return bot.sendMessage(chatId,
-`📊 SELECT MARKET`,
-{
-  reply_markup: {
-    inline_keyboard: markets.map(m => ([
-      { text: m, callback_data: "m_" + m }
-    ]))
-  }
-});
-    }
-
-    // STEP 3
-    if (query.data.startsWith("m_")) {
-
-      const market = query.data.replace("m_", "");
-      userState[chatId].market = market;
-
-      return bot.sendMessage(chatId,
-`📈 SELECT TIMEFRAME`,
-{
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: "1m", callback_data: "t_1m" }],
-      [{ text: "5m", callback_data: "t_5m" }],
-      [{ text: "15m", callback_data: "t_15m" }]
-    ]
-  }
-});
-    }
-
-    // STEP 4
-    if (query.data.startsWith("t_")) {
-
-      const timeframe = query.data.split("_")[1];
-      const market = userState[chatId].market || "BTC/USD";
-
-      const loading = await bot.sendMessage(chatId,
-`⚡ ANALYSING...
-
-📊 ${market}
-📈 ${timeframe}`);
-
-      setTimeout(async () => {
-
-        const closes = await generateCloses(market, timeframe);
-        const result = smartSignal(closes);
-
-        // SAVE SAFE
-        try {
-          await Signal.create({
-            signal: result.signal,
-            confidence: result.confidence
-          });
-        } catch (e) {
-          console.log("DB ERROR:", e.message);
-        }
-
-        await bot.editMessageText(
-`📊 SIGNAL RESULT
-
-📈 ${market}
-📊 ${timeframe}
-
-${result.signal}
-🎯 ${result.confidence}%`,
-          {
-            chat_id: chatId,
-            message_id: loading.message_id
-          }
-        );
-
-      }, 12000);
-
-    }
+    return res.data.values
+      .reverse()
+      .map(c => parseFloat(c.close));
 
   } catch (err) {
-    console.log("BOT ERROR:", err.message);
-    bot.sendMessage(chatId, "❌ ERROR");
+    console.log("MARKET ERROR:", err.message);
+
+    // fallback safe (NE JAMAIS CRASH)
+    return [100, 101, 102, 103, 104, 103, 105];
   }
-});
+}
+
+module.exports = { generateMarkets, generateCloses };
