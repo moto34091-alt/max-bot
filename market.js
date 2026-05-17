@@ -3,49 +3,36 @@ const axios = require("axios");
 const API_KEY = process.env.TWELVE_API_KEY;
 
 // ===============================
-// GENERATE FAKE LIST (SAFE)
-// ===============================
 async function generateMarkets() {
-  // simple safe list (tu peux améliorer plus tard)
-  return [
-    "BTC/USD",
-    "ETH/USD",
-    "SOL/USD",
-    "XRP/USD",
-    "BNB/USD"
-  ];
+  return ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD", "BNB/USD"];
 }
 
-// ===============================
-// GET REAL CANDLES (TWELVE DATA)
 // ===============================
 async function generateCloses(symbol = "BTC/USD", interval = "1min") {
 
   try {
-
     const res = await axios.get("https://api.twelvedata.com/time_series", {
       params: {
-        symbol: symbol,
-        interval: interval,
+        symbol,
+        interval,
         outputsize: 20,
         apikey: API_KEY
       }
     });
 
     if (!res.data || !res.data.values) {
-      throw new Error("No data from API");
+      throw new Error("NO DATA");
     }
 
     return res.data.values
       .reverse()
       .map(c => parseFloat(c.close));
 
-  } catch (error) {
+  } catch (err) {
+    console.log("MARKET ERROR:", err.message);
 
-    console.log("❌ MARKET ERROR:", error.message);
-
-    // fallback SAFE DATA (never crash bot)
-    return [100, 101, 102, 101, 103, 104, 103, 105];
+    // fallback safe (NE JAMAIS CRASH)
+    return [100, 101, 102, 103, 104, 103, 105];
   }
 }
 
