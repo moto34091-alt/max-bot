@@ -1,25 +1,41 @@
-function calculateRSI(closes) {
-  let gains = 0;
-  let losses = 0;
+bot.on("callback_query", async (query) => {
 
-  for (let i = 1; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1];
+  const chatId = query.message.chat.id;
 
-    if (diff >= 0) gains += diff;
-    else losses -= diff;
+  if (query.data === "signal") {
+
+    bot.sendMessage(chatId, "⚡ Analysing market...");
+
+    try {
+
+      const closes = generateCloses();
+
+      if (!closes || closes.length === 0) {
+        throw new Error("No market data");
+      }
+
+      const result = smartSignal(closes);
+
+      if (!result || !result.signal) {
+        throw new Error("Invalid signal");
+      }
+
+      await Signal.create({
+        signal: result.signal,
+        confidence: result.confidence || 0
+      });
+
+      bot.sendMessage(chatId,
+`📊 SIGNAL
+
+${result.signal}
+
+🎯 Confidence: ${result.confidence}%`
+      );
+
+    } catch (error) {
+      console.log("SIGNAL ERROR:", error.message);
+      bot.sendMessage(chatId, "❌ Error generating signal");
+    }
   }
-
-  const rs = gains / (losses || 1);
-  return 100 - (100 / (1 + rs));
-}
-
-function smartSignal(closes) {
-  const rsi = calculateRSI(closes);
-
-  if (rsi < 30) return { signal: "BUY", confidence: 90 };
-  if (rsi > 70) return { signal: "SELL", confidence: 90 };
-
-  return { signal: "WAIT", confidence: 60 };
-}
-
-module.exports = { smartSignal };
+});
