@@ -8,33 +8,31 @@ const { smartSignal } = require("./signals");
 const { generateMarkets, generateCloses } = require("./market");
 const Signal = require("./models/Signal");
 
-// ===============================
-// USER STATE
-// ===============================
 const userState = {};
 
 // ===============================
-// ENV CHECK
-// ===============================
 console.log("🚀 BOT STARTING...");
 
+// ===============================
+// CHECK ENV
+// ===============================
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_KEY) {
-  console.log("❌ Missing ENV variables");
+  console.log("❌ Missing ENV");
   process.exit(1);
 }
 
 // ===============================
-// MONGO DB
+// MONGO
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
-  .then(() => console.log("✅ MongoDB Connected"))
+  .then(() => console.log("✅ MongoDB OK"))
   .catch(err => {
-    console.log("❌ Mongo Error:", err.message);
+    console.log("❌ Mongo ERROR:", err.message);
     process.exit(1);
   });
 
 // ===============================
-// EXPRESS (RAILWAY REQUIRED)
+// EXPRESS (RAILWAY)
 // ===============================
 const app = express();
 
@@ -45,7 +43,7 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("🌐 Server running on " + PORT);
+  console.log("🌐 Server OK " + PORT);
 });
 
 // ===============================
@@ -56,14 +54,9 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
 });
 
 // ===============================
-// START
-// ===============================
 bot.onText(/\/start/, (msg) => {
-
   bot.sendMessage(msg.chat.id,
-`🚀 OTC AI TRADING BOT
-
-Start analysis 👇`,
+`🚀 OTC AI BOT`,
 {
   reply_markup: {
     inline_keyboard: [
@@ -74,7 +67,7 @@ Start analysis 👇`,
 });
 
 // ===============================
-// CALLBACK FLOW
+// FLOW
 // ===============================
 bot.on("callback_query", async (query) => {
 
@@ -82,40 +75,30 @@ bot.on("callback_query", async (query) => {
 
   try {
 
-    // =========================
-    // STEP 1: START
-    // =========================
+    // START
     if (query.data === "start") {
 
       return bot.sendMessage(chatId,
-`⚡ MARKET SCANNER`,
+`⚡ SCANNER`,
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "🔄 GENERATE REAL MARKETS", callback_data: "gen_market" }]
+      [{ text: "🔄 GENERATE MARKETS", callback_data: "gen_market" }]
     ]
   }
 });
     }
 
-    // =========================
-    // STEP 2: GENERATE REAL MARKETS (TWELVE DATA)
-    // =========================
+    // GENERATE MARKETS
     if (query.data === "gen_market") {
-
-      const loading = await bot.sendMessage(chatId,
-`⚡ SCANNING REAL MARKETS...
-📡 Twelve Data API`);
 
       const markets = await generateMarkets();
 
       userState[chatId] = { markets };
 
-      return bot.editMessageText(
+      return bot.sendMessage(chatId,
 `📊 SELECT MARKET`,
 {
-  chat_id: chatId,
-  message_id: loading.message_id,
   reply_markup: {
     inline_keyboard: markets.map(m => ([
       { text: m, callback_data: "m_" + m }
@@ -124,13 +107,10 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // =========================
-    // STEP 3: MARKET SELECT
-    // =========================
+    // SELECT MARKET
     if (query.data.startsWith("m_")) {
 
       const market = query.data.replace("m_", "");
-
       userState[chatId].market = market;
 
       return bot.sendMessage(chatId,
@@ -138,63 +118,51 @@ bot.on("callback_query", async (query) => {
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "1m candles", callback_data: "t_1m" }],
-      [{ text: "5m candles", callback_data: "t_5m" }],
-      [{ text: "15m candles", callback_data: "t_15m" }]
+      [{ text: "1m", callback_data: "t_1m" }],
+      [{ text: "5m", callback_data: "t_5m" }],
+      [{ text: "15m", callback_data: "t_15m" }]
     ]
   }
 });
     }
 
-    // =========================
-    // STEP 4: TIMEFRAME + ANALYSIS (REAL SIGNAL ENGINE)
-    // =========================
+    // ANALYSIS
     if (query.data.startsWith("t_")) {
 
       const timeframe = query.data.split("_")[1];
       const market = userState[chatId].market || "BTC/USD";
 
       const loading = await bot.sendMessage(chatId,
-`⚡ ANALYSING REAL MARKET...
+`⚡ ANALYSING...
 
-📊 Market: ${market}
-📈 Timeframe: ${timeframe}
-⏳ Processing 12s engine...`);
+📊 ${market}
+📈 ${timeframe}`);
 
       setTimeout(async () => {
 
-        const closes = await generateCloses(
-          market,
-          timeframe
-        );
-
+        const closes = await generateCloses(market, timeframe);
         const result = smartSignal(closes);
 
         await bot.editMessageText(
-`📊 REAL MARKET SIGNAL
+`📊 SIGNAL
 
-📈 Market: ${market}
-📊 Timeframe: ${timeframe}
+📈 ${market}
+📊 ${timeframe}
 
 ${result.signal}
-🎯 Probability: ${result.confidence}%
-
-⚡ Source: Twelve Data API
-⏱ Engine: RSI + EMA + Momentum`,
+🎯 ${result.confidence}%`,
           {
             chat_id: chatId,
             message_id: loading.message_id
           }
         );
 
-        userState[chatId] = {};
-
       }, 12000);
 
     }
 
-  } catch (error) {
-    console.log("BOT ERROR:", error.message);
-    bot.sendMessage(chatId, "❌ Error processing request");
+  } catch (err) {
+    console.log("ERROR:", err.message);
+    bot.sendMessage(chatId, "❌ Error bot");
   }
 });
