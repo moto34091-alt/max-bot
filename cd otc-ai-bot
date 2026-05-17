@@ -1,0 +1,13 @@
+otc-ai-bot/
+│
+├── main.js
+├── signals.js
+├── market.js
+├── server.js
+├── .env
+├── package.json
+│
+├── models/
+│   └── Signal.js
+│
+└── dashboard/   (React séparé)
