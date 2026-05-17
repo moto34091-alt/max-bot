@@ -10,39 +10,41 @@ function calculateRSI(closes) {
   }
 
   const rs = gains / (losses || 1);
-  const rsi = 100 - (100 / (1 + rs));
+  return 100 - (100 / (1 + rs));
+}
 
-  return rsi;
+function calculateEMA(closes, period = 5) {
+  const k = 2 / (period + 1);
+  let ema = closes[0];
+
+  for (let i = 1; i < closes.length; i++) {
+    ema = closes[i] * k + ema * (1 - k);
+  }
+
+  return ema;
 }
 
 function smartSignal(closes) {
 
-  if (!closes || closes.length < 5) {
-    return {
-      signal: "WAIT",
-      confidence: 50
-    };
-  }
-
   const rsi = calculateRSI(closes);
+  const ema = calculateEMA(closes);
+  const lastPrice = closes[closes.length - 1];
 
-  if (rsi < 35) {
-    return {
-      signal: "BUY",
-      confidence: Math.floor(80 + Math.random() * 15)
-    };
-  }
+  let signal;
+  let confidence = 70;
 
-  if (rsi > 65) {
-    return {
-      signal: "SELL",
-      confidence: Math.floor(80 + Math.random() * 15)
-    };
+  // 🔥 LOGIQUE FORCE (NO WAIT)
+  if (rsi < 50 && lastPrice > ema) {
+    signal = "🟢 BUY 📈";
+    confidence = Math.floor(75 + Math.random() * 20);
+  } else {
+    signal = "🔴 SELL 📉";
+    confidence = Math.floor(75 + Math.random() * 20);
   }
 
   return {
-    signal: "WAIT",
-    confidence: 55
+    signal,
+    confidence
   };
 }
 
