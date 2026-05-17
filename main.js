@@ -1,35 +1,35 @@
 require("dotenv").config();
 
 const express = require("express");
-const TelegramBot = require("node-telegram-bot-api");
-const mongoose = require("mongoose");
 
-const { smartSignal } = require("./signals");
-const { generateCloses } = require("./market");
-const Signal = require("./models/Signal");
+console.log("🚀 STARTING BOT...");
 
 // ===============================
-// CHECK ENV
+// SAFE IMPORTS (avoid crash)
 // ===============================
-console.log("🚀 BOT STARTING...");
+let smartSignal, generateCloses, Signal;
 
-if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
-  console.log("❌ Missing ENV variables");
-  process.exit(1);
+try {
+  ({ smartSignal } = require("./signals"));
+  ({ generateCloses } = require("./market"));
+  Signal = require("./models/Signal");
+} catch (e) {
+  console.log("⚠️ MODULE LOAD ERROR:", e.message);
 }
 
 // ===============================
-// MONGO CONNECT (SAFE)
+// CHECK ENV SAFE
 // ===============================
-mongoose.connect(process.env.MONGO_URL)
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch(err => {
-    console.log("❌ Mongo Error:", err.message);
-    process.exit(1);
-  });
+if (!process.env.BOT_TOKEN) {
+  console.log("❌ BOT_TOKEN missing");
+}
+
+if (!process.env.MONGO_URL) {
+  console.log("⚠️ MONGO_URL missing (bot will run without DB)");
+}
 
 // ===============================
-// EXPRESS SERVER
+// EXPRESS SERVER (MANDATORY RAILWAY)
 // ===============================
 const app = express();
 
@@ -38,19 +38,21 @@ app.get("/", (req, res) => {
 });
 
 app.get("/status", (req, res) => {
-  res.json({
-    status: "ONLINE",
-    bot: "OTC AI BOT"
-  });
+  res.json({ status: "ONLINE" });
 });
 
 app.get("/signal", (req, res) => {
   try {
+
+    if (!generateCloses || !smartSignal) {
+      return res.json({
+        success: false,
+        error: "Modules not loaded"
+      });
+    }
+
     const closes = generateCloses();
-    const result = smartSignal(closes) || {
-      signal: "WAIT",
-      confidence: 50
-    };
+    const result = smartSignal(closes);
 
     res.json({
       success: true,
@@ -67,8 +69,6 @@ app.get("/signal", (req, res) => {
 });
 
 // ===============================
-// START SERVER (RAILWAY FIX)
-// ===============================
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
@@ -76,65 +76,67 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 // ===============================
-// TELEGRAM BOT
+// TELEGRAM BOT (SAFE START)
 // ===============================
-const bot = new TelegramBot(process.env.BOT_TOKEN, {
-  polling: true
-});
+let bot;
 
-// ===============================
-// START COMMAND
-// ===============================
-bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id,
-`🚀 OTC AI BOT
+try {
+  const TelegramBot = require("node-telegram-bot-api");
 
-Clique pour recevoir un signal.`,
-{
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: "🚀 GET SIGNAL", callback_data: "signal" }]
-    ]
-  }
-});
-});
+  if (process.env.BOT_TOKEN) {
 
-// ===============================
-// CALLBACK BUTTON (FIXED)
-// ===============================
-bot.on("callback_query", async (query) => {
+    bot = new TelegramBot(process.env.BOT_TOKEN, {
+      polling: true
+    });
 
-  try {
-
-    const chatId = query.message.chat.id;
-
-    if (query.data === "signal") {
-
-      bot.sendMessage(chatId, "⚡ Analysing market...");
-
-      const closes = generateCloses();
-
-      const result = smartSignal(closes) || {
-        signal: "WAIT",
-        confidence: 50
-      };
-
-      await Signal.create({
-        signal: result.signal,
-        confidence: result.confidence
+    bot.onText(/\/start/, (msg) => {
+      bot.sendMessage(msg.chat.id,
+`🚀 OTC BOT READY`, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "GET SIGNAL", callback_data: "signal" }]
+          ]
+        }
       });
+    });
 
-      bot.sendMessage(chatId,
-`📊 SIGNAL RESULT
+    bot.on("callback_query", async (query) => {
 
-${result.signal}
+      try {
 
-🎯 Confidence: ${result.confidence}%`
-      );
-    }
+        const chatId = query.message.chat.id;
 
-  } catch (error) {
-    console.log("CALLBACK ERROR:", error.message);
-    bot.sendMessage(query.message.chat.id, "❌ Error generating signal");
+        if (query.data === "signal") {
+
+          bot.sendMessage(chatId, "⚡ Analysing market...");
+
+          if (!generateCloses || !smartSignal) {
+            return bot.sendMessage(chatId, "❌ Strategy not loaded");
+          }
+
+          const closes = generateCloses();
+          const result = smartSignal(closes);
+
+          bot.sendMessage(chatId,
+`📊 SIGNAL
+
+${result.signal || "WAIT"}
+
+🎯 Confidence: ${result.confidence || 50}%`
+          );
+        }
+
+      } catch (e) {
+        console.log("BOT ERROR:", e.message);
+      }
+    });
+
+    console.log("🤖 Telegram bot started");
+
+  } else {
+    console.log("⚠️ Bot not started (no token)");
   }
-});
+
+} catch (e) {
+  console.log("❌ Telegram init error:", e.message);
+}
