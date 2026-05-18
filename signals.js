@@ -1,8 +1,14 @@
-function calculateRSI(closes) {
+// ===============================
+// RSI
+// ===============================
+function calculateRSI(closes, period = 14) {
+
+  if (!closes || closes.length < period + 1) return 50;
+
   let gains = 0;
   let losses = 0;
 
-  for (let i = 1; i < closes.length; i++) {
+  for (let i = closes.length - period; i < closes.length; i++) {
     const diff = closes[i] - closes[i - 1];
 
     if (diff > 0) gains += diff;
@@ -14,36 +20,114 @@ function calculateRSI(closes) {
 }
 
 // ===============================
-// DOUBLE CONFIRMATION SIGNAL
+// MOVING AVERAGE
+// ===============================
+function MA(data, period) {
+  const slice = data.slice(-period);
+  return slice.reduce((a, b) => a + b, 0) / slice.length;
+}
+
+// ===============================
+// SUPPORT & RESISTANCE
+// ===============================
+function supportResistance(closes, period = 20) {
+
+  const slice = closes.slice(-period);
+
+  const support = Math.min(...slice);
+  const resistance = Math.max(...slice);
+
+  return { support, resistance };
+}
+
+// ===============================
+// BREAKOUT DETECTION
+// ===============================
+function breakout(closes, support, resistance) {
+
+  const last = closes[closes.length - 1];
+  const prev = closes[closes.length - 2];
+
+  // Breakout UP
+  if (last > resistance && prev <= resistance) {
+    return "BREAKOUT_UP";
+  }
+
+  // Breakout DOWN
+  if (last < support && prev >= support) {
+    return "BREAKOUT_DOWN";
+  }
+
+  return "NONE";
+}
+
+// ===============================
+// SMART SIGNAL PRO
 // ===============================
 function smartSignal(closes) {
 
-  if (!closes || closes.length < 5) {
+  if (!closes || closes.length < 20) {
     return { signal: "⚪ WAIT", confidence: 50 };
   }
 
-  const rsiFast = calculateRSI(closes.slice(-6));
-  const rsiSlow = calculateRSI(closes);
+  const rsi = calculateRSI(closes, 14);
 
-  let s1 = null;
-  let s2 = null;
+  const maShort = MA(closes, 5);
+  const maLong = MA(closes, 10);
 
-  if (rsiFast < 35) s1 = "BUY";
-  if (rsiFast > 65) s1 = "SELL";
+  const { support, resistance } = supportResistance(closes);
 
-  if (rsiSlow < 35) s2 = "BUY";
-  if (rsiSlow > 65) s2 = "SELL";
+  const brk = breakout(closes, support, resistance);
 
-  if (s1 && s1 === s2) {
+  let score = 0;
+
+  // ===============================
+  // TREND LOGIC
+  // ===============================
+  if (maShort > maLong) score += 20;
+  if (maShort < maLong) score -= 20;
+
+  // ===============================
+  // RSI LOGIC
+  // ===============================
+  if (rsi < 40) score += 20;
+  if (rsi > 60) score -= 20;
+
+  // ===============================
+  // BREAKOUT LOGIC (IMPORTANT)
+  // ===============================
+  if (brk === "BREAKOUT_UP") score += 40;
+  if (brk === "BREAKOUT_DOWN") score -= 40;
+
+  // ===============================
+  // FINAL DECISION
+  // ===============================
+  if (score >= 50) {
     return {
-      signal: s1 === "BUY" ? "🟢 BUY (CONFIRMED)" : "🔴 SELL (CONFIRMED)",
-      confidence: Math.floor(85 + Math.random() * 10)
+      signal: "🟢 BUY",
+      confidence: score,
+      support,
+      resistance,
+      breakout: brk
+    };
+  }
+
+  if (score <= -50) {
+    return {
+      signal: "🔴 SELL",
+      confidence: Math.abs(score),
+      support,
+      resistance,
+      breakout: brk
     };
   }
 
   return {
     signal: "⚪ WAIT",
-    confidence: 50
+    confidence: 50,
+    support,
+    resistance,
+    breakout: brk
   };
 }
 
