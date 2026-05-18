@@ -2,7 +2,6 @@ require("dotenv").config();
 
 const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
-const mongoose = require("mongoose");
 
 const { smartSignal } = require("./signals");
 const { generateCloses, generateMarkets } = require("./market");
@@ -60,11 +59,16 @@ function UI(result) {
 // ===============================
 // START
 // ===============================
-bot.onText(/\/start/, (msg) => {
+bot.onText(/\/start/, async (msg) => {
 
-  bot.sendMessage(
+  await bot.sendMessage(
     msg.chat.id,
-`🚀 MAX BOT`,
+`🚀 MAX BOT PRO
+
+📊 SMART FOREX SIGNAL
+🕯 PATTERN DETECTION
+📈 TREND ANALYSIS
+⚡ FAST ENGINE`,
 {
   reply_markup: {
     keyboard: [
@@ -81,9 +85,9 @@ bot.onText(/\/start/, (msg) => {
 // ===============================
 // AIDE
 // ===============================
-bot.onText(/👤 AIDE @Mr_dflam/, (msg) => {
+bot.onText(/👤 AIDE @Mr_dflam/, async (msg) => {
 
-  bot.sendMessage(
+  await bot.sendMessage(
     msg.chat.id,
 `👤 SUPPORT
 
@@ -92,13 +96,13 @@ bot.onText(/👤 AIDE @Mr_dflam/, (msg) => {
 });
 
 // ===============================
-// SIGNAL
+// SIGNAL MENU
 // ===============================
-bot.onText(/📊 SIGNAL/, (msg) => {
+bot.onText(/📊 SIGNAL/, async (msg) => {
 
   const markets = generateMarkets();
 
-  bot.sendMessage(
+  await bot.sendMessage(
     msg.chat.id,
 `📊 CHOOSE MARKET`,
 {
@@ -125,31 +129,36 @@ bot.onText(/⚡ QUICK SIGNAL/, async (msg) => {
 
   const result = smartSignal(closes);
 
-  const price = closes[closes.length - 1];
+  const price = closes.at(-1);
 
-  bot.sendMessage(
+  await bot.sendMessage(
     msg.chat.id,
-`📊 QUICK SIGNAL
+`⚡ QUICK SIGNAL
 
-📈 ${market}
-💰 ${price}
+📈 MARKET: ${market}
+💰 PRICE: ${price}
 
 ${UI(result)}
 
-🎯 ${Math.round(result.confidence)}%`
+🎯 CONFIDENCE: ${Math.round(result.confidence)}%
+
+📈 TREND: ${result.trend || "SIDE"}
+📊 RSI: ${result.rsi || "--"}
+
+🚀 MAX BOT`
   );
 });
 
 // ===============================
 // AUTO SIGNAL
 // ===============================
-bot.onText(/📈 AUTO SIGNAL/, (msg) => {
+bot.onText(/📈 AUTO SIGNAL/, async (msg) => {
 
   const chatId = msg.chat.id;
 
   autoUsers[chatId] = true;
 
-  bot.sendMessage(chatId, "🔥 AUTO SIGNAL ON");
+  await bot.sendMessage(chatId, "🔥 AUTO SIGNAL ON");
 
   const loop = async () => {
 
@@ -164,20 +173,25 @@ bot.onText(/📈 AUTO SIGNAL/, (msg) => {
 
     const result = smartSignal(closes);
 
-    const price = closes[closes.length - 1];
+    const price = closes.at(-1);
 
     if (result.signal !== "⚪ WAIT") {
 
-      bot.sendMessage(
+      await bot.sendMessage(
         chatId,
 `📊 AUTO SIGNAL
 
-📈 ${market}
-💰 ${price}
+📈 MARKET: ${market}
+💰 PRICE: ${price}
 
 ${UI(result)}
 
-🎯 ${Math.round(result.confidence)}%`
+🎯 CONFIDENCE: ${Math.round(result.confidence)}%
+
+📈 TREND: ${result.trend || "SIDE"}
+📊 RSI: ${result.rsi || "--"}
+
+🚀 MAX BOT`
       );
     }
 
@@ -190,25 +204,25 @@ ${UI(result)}
 // ===============================
 // STOP AUTO
 // ===============================
-bot.onText(/⛔ STOP AUTO/, (msg) => {
+bot.onText(/⛔ STOP AUTO/, async (msg) => {
 
   autoUsers[msg.chat.id] = false;
 
-  bot.sendMessage(
+  await bot.sendMessage(
     msg.chat.id,
 "⛔ AUTO SIGNAL STOPPED"
   );
 });
 
 // ===============================
-// CALLBACK
+// CALLBACK HANDLER
 // ===============================
 bot.on("callback_query", async (q) => {
 
   const chatId = q.message.chat.id;
 
   // ===============================
-  // MARKET
+  // MARKET SELECT
   // ===============================
   if (q.data.startsWith("m_")) {
 
@@ -216,63 +230,71 @@ bot.on("callback_query", async (q) => {
 
     userState[chatId] = { market };
 
-    return bot.editMessageText(
-`📈 SELECT TIMEFRAME
+    await bot.deleteMessage(chatId, q.message.message_id);
 
-📊 ${market}`,
+    await bot.sendMessage(
+      chatId,
+`📈 MARKET SELECTED
+
+${market}
+
+⏳ Choose timeframe`,
 {
-  chat_id: chatId,
-  message_id: q.message.message_id,
   reply_markup: {
     inline_keyboard: [
-      [
-        { text: "1m", callback_data: "t_1m" }
-      ],
-      [
-        { text: "5m", callback_data: "t_5m" }
-      ]
+      [{ text: "1m", callback_data: "t_1m" }],
+      [{ text: "5m", callback_data: "t_5m" }],
+      [{ text: "15m", callback_data: "t_15m" }]
     ]
   }
 });
   }
 
   // ===============================
-  // TIMEFRAME
+  // TIMEFRAME SELECT
   // ===============================
   if (q.data.startsWith("t_")) {
 
     const tf = q.data.split("_")[1];
 
     const market =
-      userState[chatId]?.market || "BTC/USD";
+      userState[chatId]?.market || "EUR/USD";
 
-    const loading =
-      await bot.sendMessage(
-        chatId,
+    await bot.deleteMessage(chatId, q.message.message_id);
+
+    const loading = await bot.sendMessage(
+      chatId,
 `⚡ ANALYSING MARKET...
 
 📊 ${market}
-📈 ${tf}`
-      );
+📈 ${tf}
 
-    setTimeout(() => {
+🕯 Scanning candles...
+📊 Detecting trend...
+🔥 AI processing...`
+    );
+
+    setTimeout(async () => {
 
       const closes = generateCloses(market);
 
       const result = smartSignal(closes);
 
-      const price = closes[closes.length - 1];
+      const price = closes.at(-1);
 
-      bot.editMessageText(
+      await bot.editMessageText(
 `📊 SIGNAL READY
 
-📈 ${market}
-💰 ${price}
-📊 ${tf}
+📈 MARKET: ${market}
+💰 PRICE: ${price}
+📊 TIMEFRAME: ${tf}
 
 ${UI(result)}
 
-🎯 ${Math.round(result.confidence)}%
+🎯 CONFIDENCE: ${Math.round(result.confidence)}%
+
+📈 TREND: ${result.trend || "SIDE"}
+📊 RSI: ${result.rsi || "--"}
 
 🚀 MAX BOT`,
 {
