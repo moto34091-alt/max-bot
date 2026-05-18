@@ -1,64 +1,89 @@
-function generateCloses(market = "BTC/USD") {
+function generateCloses(market = "EUR/USD") {
 
   const base = {
-    "BTC/USD": 65000,
-    "ETH/USD": 3200,
-    "XRP/USD": 0.6,
-    "SOL/USD": 140,
-    "BNB/USD": 580,
-    "DOGE/USD": 0.15,
-    "ADA/USD": 0.5,
-    "LTC/USD": 80,
-    "AVAX/USD": 35,
-    "TRX/USD": 0.12,
-    "USD/CAD": 1.36,
-    "GBP/CHF": 1.12,
-    "GBP/JPY": 190,
     "EUR/USD": 1.08,
-    "GBP/CAD": 1.72,
-    "EUR/GBP": 0.86,
-    "EUR/JPY": 160,
-    "AUD/USD": 0.66,
-    "AUD/CHF": 0.60,
-    "CHF/JPY": 170,
-    "GBP/AUD": 1.95,
-    "CAD/JPY": 110,
-    "EUR/CAD": 1.48,
-    "AUD/CAD": 0.90,
     "GBP/USD": 1.27,
-    "USD/CHF": 0.88,
     "USD/JPY": 155,
-    "EUR/AUD": 1.62,
-    "CAD/CHF": 0.65,
-    "AUD/JPY": 100,
+    "USD/CHF": 0.88,
+    "USD/CAD": 1.36,
+    "AUD/USD": 0.66,
     "NZD/USD": 0.61,
+
+    "EUR/JPY": 160,
+    "GBP/JPY": 190,
+    "AUD/JPY": 100,
+    "CAD/JPY": 110,
+    "CHF/JPY": 170,
+    "NZD/JPY": 92,
+
+    "EUR/GBP": 0.86,
     "EUR/CHF": 0.95,
-    "NZD/JPY": 92
+    "EUR/CAD": 1.48,
+    "EUR/AUD": 1.62,
+
+    "GBP/CHF": 1.12,
+    "GBP/CAD": 1.72,
+    "GBP/AUD": 1.95,
+
+    "AUD/CHF": 0.60,
+    "CAD/CHF": 0.65,
+    "AUD/CAD": 0.90
   };
 
-  let price = base[market] || 100;
+  let price = base[market] || 1;
 
   const closes = [];
 
   for (let i = 0; i < 30; i++) {
-    const change = (Math.random() - 0.5) * (price * 0.01);
+
+    const change =
+      (Math.random() - 0.5) * (price * 0.0025);
+
     price += change;
-    closes.push(Number(price.toFixed(4)));
+
+    closes.push(Number(price.toFixed(5)));
   }
 
   return closes;
 }
 
+// ===============================
+// MARKETS LIST (PRO FOREX CLEAN)
+// ===============================
 function generateMarkets() {
-  return Object.keys({
-    "BTC/USD":1,"ETH/USD":1,"XRP/USD":1,"SOL/USD":1,"BNB/USD":1,
-    "DOGE/USD":1,"ADA/USD":1,"LTC/USD":1,"AVAX/USD":1,"TRX/USD":1,
-    "USD/CAD":1,"GBP/CHF":1,"GBP/JPY":1,"EUR/USD":1,"GBP/CAD":1,
-    "EUR/GBP":1,"EUR/JPY":1,"AUD/USD":1,"AUD/CHF":1,"CHF/JPY":1,
-    "GBP/AUD":1,"CAD/JPY":1,"EUR/CAD":1,"AUD/CAD":1,"GBP/USD":1,
-    "USD/CHF":1,"USD/JPY":1,"EUR/AUD":1,"CAD/CHF":1,"AUD/JPY":1,
-    "NZD/USD":1,"EUR/CHF":1,"NZD/JPY":1
-  });
+
+  return [
+    "EUR/USD",
+    "GBP/USD",
+    "USD/JPY",
+    "USD/CHF",
+    "USD/CAD",
+    "AUD/USD",
+    "NZD/USD",
+
+    "EUR/JPY",
+    "GBP/JPY",
+    "AUD/JPY",
+    "CAD/JPY",
+    "CHF/JPY",
+    "NZD/JPY",
+
+    "EUR/GBP",
+    "EUR/CHF",
+    "EUR/CAD",
+    "EUR/AUD",
+
+    "GBP/CHF",
+    "GBP/CAD",
+    "GBP/AUD",
+
+    "AUD/CHF",
+    "CAD/CHF",
+    "AUD/CAD"
+  ];
 }
 
-module.exports = { generateCloses, generateMarkets };
+module.exports = {
+  generateCloses,
+  generateMarkets
+};
