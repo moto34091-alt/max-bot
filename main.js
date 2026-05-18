@@ -7,48 +7,73 @@ const mongoose = require("mongoose");
 const { smartSignal } = require("./signals");
 const { generateCloses, generateMarkets } = require("./market");
 
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(process.env.BOT_TOKEN, {
+  polling: true
+});
 
 const userState = {};
 const autoUsers = {};
 
 // ===============================
 const app = express();
-app.get("/", (req,res)=>res.send("MAX BOT OK"));
+
+app.get("/", (req, res) => {
+  res.send("🚀 MAX BOT OK");
+});
+
 app.listen(process.env.PORT || 3000);
 
 // ===============================
 // UI
 // ===============================
-function UI(result){
+function UI(result) {
 
-  if(result.signal.includes("BUY")){
-    return `████████\n🟢 BUY ⬆️\n████████`;
+  if (result.signal.includes("BUY")) {
+    return `
+████████████
+
+🟢 BUY ⬆️
+
+████████████
+`;
   }
 
-  if(result.signal.includes("SELL")){
-    return `████████\n🔴 SELL ⬇️\n████████`;
+  if (result.signal.includes("SELL")) {
+    return `
+████████████
+
+🔴 SELL ⬇️
+
+████████████
+`;
   }
 
-  return `████████\n⚪ WAIT\n████████`;
+  return `
+████████████
+
+⚪ WAIT
+
+████████████
+`;
 }
 
 // ===============================
 // START
 // ===============================
-bot.onText(/\/start/, (msg)=>{
+bot.onText(/\/start/, (msg) => {
 
-  bot.sendMessage(msg.chat.id,
+  bot.sendMessage(
+    msg.chat.id,
 `🚀 MAX BOT`,
 {
-  reply_markup:{
-    keyboard:[
+  reply_markup: {
+    keyboard: [
       ["📊 SIGNAL"],
       ["⚡ QUICK SIGNAL"],
-      ["📈 AUTO SIGNAL","⛔ STOP AUTO"],
+      ["📈 AUTO SIGNAL", "⛔ STOP AUTO"],
       ["👤 AIDE @Mr_dflam"]
     ],
-    resize_keyboard:true
+    resize_keyboard: true
   }
 });
 });
@@ -56,141 +81,205 @@ bot.onText(/\/start/, (msg)=>{
 // ===============================
 // AIDE
 // ===============================
-bot.onText(/👤 AIDE @Mr_dflam/, (msg)=>{
-  bot.sendMessage(msg.chat.id,"👤 @Mr_dflam support");
+bot.onText(/👤 AIDE @Mr_dflam/, (msg) => {
+
+  bot.sendMessage(
+    msg.chat.id,
+`👤 SUPPORT
+
+📩 @Mr_dflam`
+  );
 });
 
 // ===============================
 // SIGNAL
 // ===============================
-bot.onText(/📊 SIGNAL/, (msg)=>{
+bot.onText(/📊 SIGNAL/, (msg) => {
 
   const markets = generateMarkets();
 
-  bot.sendMessage(msg.chat.id,"📊 CHOOSE MARKET",{
-    reply_markup:{
-      inline_keyboard: markets.map(m=>[{
-        text:m,
-        callback_data:"m_"+m
-      }])
-    }
-  });
+  bot.sendMessage(
+    msg.chat.id,
+`📊 CHOOSE MARKET`,
+{
+  reply_markup: {
+    inline_keyboard: markets.map(m => [{
+      text: m,
+      callback_data: "m_" + m
+    }])
+  }
+});
 });
 
 // ===============================
-// QUICK
+// QUICK SIGNAL
 // ===============================
-bot.onText(/⚡ QUICK SIGNAL/, async (msg)=>{
+bot.onText(/⚡ QUICK SIGNAL/, async (msg) => {
 
   const markets = generateMarkets();
-  const market = markets[Math.floor(Math.random()*markets.length)];
+
+  const market =
+    markets[Math.floor(Math.random() * markets.length)];
 
   const closes = generateCloses(market);
+
   const result = smartSignal(closes);
 
-  bot.sendMessage(msg.chat.id,
-`📊 QUICK
+  const price = closes[closes.length - 1];
+
+  bot.sendMessage(
+    msg.chat.id,
+`📊 QUICK SIGNAL
 
 📈 ${market}
+💰 ${price}
 
 ${UI(result)}
 
-🎯 ${result.confidence}%`);
+🎯 ${Math.round(result.confidence)}%`
+  );
 });
 
 // ===============================
-// AUTO
+// AUTO SIGNAL
 // ===============================
-bot.onText(/📈 AUTO SIGNAL/, (msg)=>{
+bot.onText(/📈 AUTO SIGNAL/, (msg) => {
 
-  autoUsers[msg.chat.id] = true;
+  const chatId = msg.chat.id;
 
-  const loop = async ()=>{
+  autoUsers[chatId] = true;
 
-    if(!autoUsers[msg.chat.id]) return;
+  bot.sendMessage(chatId, "🔥 AUTO SIGNAL ON");
+
+  const loop = async () => {
+
+    if (!autoUsers[chatId]) return;
 
     const markets = generateMarkets();
-    const market = markets[Math.floor(Math.random()*markets.length)];
+
+    const market =
+      markets[Math.floor(Math.random() * markets.length)];
 
     const closes = generateCloses(market);
+
     const result = smartSignal(closes);
 
-    if(result.signal !== "⚪ WAIT"){
-      bot.sendMessage(msg.chat.id,
-`📊 AUTO
+    const price = closes[closes.length - 1];
+
+    if (result.signal !== "⚪ WAIT") {
+
+      bot.sendMessage(
+        chatId,
+`📊 AUTO SIGNAL
 
 📈 ${market}
+💰 ${price}
 
 ${UI(result)}
 
-🎯 ${result.confidence}%`);
+🎯 ${Math.round(result.confidence)}%`
+      );
     }
 
-    setTimeout(loop,15000);
+    setTimeout(loop, 15000);
   };
 
   loop();
 });
 
 // ===============================
-// STOP
+// STOP AUTO
 // ===============================
-bot.onText(/⛔ STOP AUTO/, (msg)=>{
-  autoUsers[msg.chat.id]=false;
-  bot.sendMessage(msg.chat.id,"STOPPED");
+bot.onText(/⛔ STOP AUTO/, (msg) => {
+
+  autoUsers[msg.chat.id] = false;
+
+  bot.sendMessage(
+    msg.chat.id,
+"⛔ AUTO SIGNAL STOPPED"
+  );
 });
 
 // ===============================
 // CALLBACK
 // ===============================
-bot.on("callback_query", async (q)=>{
+bot.on("callback_query", async (q) => {
 
   const chatId = q.message.chat.id;
 
-  if(q.data.startsWith("m_")){
+  // ===============================
+  // MARKET
+  // ===============================
+  if (q.data.startsWith("m_")) {
 
-    const market = q.data.replace("m_","");
+    const market = q.data.replace("m_", "");
 
-    userState[chatId]={market};
+    userState[chatId] = { market };
 
-    bot.editMessageText("📈 TIMEFRAME",{
-      chat_id:chatId,
-      message_id:q.message.message_id,
-      reply_markup:{
-        inline_keyboard:[
-          [{text:"1m",callback_data:"t_1m"}],
-          [{text:"5m",callback_data:"t_5m"}]
-        ]
-      }
-    });
+    return bot.editMessageText(
+`📈 SELECT TIMEFRAME
+
+📊 ${market}`,
+{
+  chat_id: chatId,
+  message_id: q.message.message_id,
+  reply_markup: {
+    inline_keyboard: [
+      [
+        { text: "1m", callback_data: "t_1m" }
+      ],
+      [
+        { text: "5m", callback_data: "t_5m" }
+      ]
+    ]
+  }
+});
   }
 
-  if(q.data.startsWith("t_")){
+  // ===============================
+  // TIMEFRAME
+  // ===============================
+  if (q.data.startsWith("t_")) {
 
     const tf = q.data.split("_")[1];
-    const market = userState[chatId].market;
 
-    const msg = await bot.sendMessage(chatId,"⚡ ANALYSING...");
+    const market =
+      userState[chatId]?.market || "BTC/USD";
 
-    setTimeout(()=>{
+    const loading =
+      await bot.sendMessage(
+        chatId,
+`⚡ ANALYSING MARKET...
+
+📊 ${market}
+📈 ${tf}`
+      );
+
+    setTimeout(() => {
 
       const closes = generateCloses(market);
+
       const result = smartSignal(closes);
 
+      const price = closes[closes.length - 1];
+
       bot.editMessageText(
-`📊 RESULT
+`📊 SIGNAL READY
 
 📈 ${market}
+💰 ${price}
 📊 ${tf}
 
 ${UI(result)}
 
-🎯 ${result.confidence}%`,
+🎯 ${Math.round(result.confidence)}%
+
+🚀 MAX BOT`,
 {
-  chat_id:chatId,
-  message_id:msg.message_id
+  chat_id: chatId,
+  message_id: loading.message_id
 });
 
-    },12000);
+    }, 12000);
   }
 });
