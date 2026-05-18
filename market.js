@@ -11,8 +11,6 @@ function generateCloses(market = "BTC/USD") {
     "LTC/USD": 80,
     "AVAX/USD": 35,
     "TRX/USD": 0.12,
-
-    // FX NON-OTC (tes marchés ajoutés)
     "USD/CAD": 1.36,
     "GBP/CHF": 1.12,
     "GBP/JPY": 190,
@@ -55,8 +53,6 @@ function generateMarkets() {
   return Object.keys({
     "BTC/USD":1,"ETH/USD":1,"XRP/USD":1,"SOL/USD":1,"BNB/USD":1,
     "DOGE/USD":1,"ADA/USD":1,"LTC/USD":1,"AVAX/USD":1,"TRX/USD":1,
-
-    // FX NON-OTC
     "USD/CAD":1,"GBP/CHF":1,"GBP/JPY":1,"EUR/USD":1,"GBP/CAD":1,
     "EUR/GBP":1,"EUR/JPY":1,"AUD/USD":1,"AUD/CHF":1,"CHF/JPY":1,
     "GBP/AUD":1,"CAD/JPY":1,"EUR/CAD":1,"AUD/CAD":1,"GBP/USD":1,
