@@ -9,12 +9,13 @@ const { generateMarkets, generateCloses } = require("./market");
 const Signal = require("./models/Signal");
 
 const userState = {};
+const autoUsers = {};
 
 // ===============================
 console.log("🚀 BOT STARTING...");
 
 // ===============================
-if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_KEY) {
+if (!process.env.BOT_TOKEN || !process.env.MONGO_URL) {
   console.log("❌ Missing ENV variables");
   process.exit(1);
 }
@@ -22,10 +23,7 @@ if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
   .then(() => console.log("✅ MongoDB CONNECTED"))
-  .catch(err => {
-    console.log("❌ Mongo ERROR:", err.message);
-    process.exit(1);
-  });
+  .catch(err => console.log("❌ Mongo ERROR:", err.message));
 
 // ===============================
 const app = express();
@@ -41,10 +39,10 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 // ===============================
-const bot = new TelegramBot(process.env.BOT_TOKEN, {
-  polling: true
-});
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
+// ===============================
+// UI SIGNAL
 // ===============================
 function buildSignalUI(result) {
 
@@ -80,17 +78,19 @@ function buildSignalUI(result) {
 }
 
 // ===============================
-// START
+// START MENU
 // ===============================
 bot.onText(/\/start/, (msg) => {
 
   bot.sendMessage(msg.chat.id,
-`🚀 MAX BOT`,
+`🚀 MAX BOT READY`,
 {
   reply_markup: {
-    inline_keyboard: [
-      [{ text: "🚀 GET SIGNAL", callback_data: "start" }]
-    ]
+    keyboard: [
+      ["📊 SIGNAL", "⚡ QUICK BTC"],
+      ["📈 AUTO MODE", "❓ HELP"]
+    ],
+    resize_keyboard: true
   }
 });
 });
@@ -98,59 +98,90 @@ bot.onText(/\/start/, (msg) => {
 // ===============================
 // HELP
 // ===============================
-bot.onText(/\/help/, (msg) => {
+bot.onText(/❓ HELP/, (msg) => {
 
   bot.sendMessage(msg.chat.id,
 `❓ MAX BOT HELP
 
-/start → menu
-/signal → quick signal
-/signal BTC/USD → custom signal
+📊 SIGNAL → full analysis
+⚡ QUICK BTC → instant signal
+📈 AUTO MODE → live signals
+STOP AUTO → stop auto mode
 
-Flow:
-Market → Timeframe → Signal (10–15s)
-
-🚀 AI TRADING BOT`);
+🚀 AI Trading Bot`);
 });
 
 // ===============================
-// SIGNAL COMMAND
+// QUICK BTC
 // ===============================
-bot.onText(/\/signal(?: (.+))?/, async (msg, match) => {
+bot.onText(/⚡ QUICK BTC/, async (msg) => {
 
   const chatId = msg.chat.id;
-  let market = match?.[1] || "BTC/USD";
 
-  bot.sendMessage(chatId, `⚡ Analysing ${market}...`);
+  bot.sendMessage(chatId, "⚡ Analyzing BTC...");
 
-  try {
+  const closes = await generateCloses("BTC/USD", "1m");
+  const result = smartSignal(closes);
 
-    const closes = await generateCloses(market, "1m");
+  const price = closes?.[closes.length - 1] || "N/A";
+
+  bot.sendMessage(chatId,
+`📊 QUICK SIGNAL
+
+📈 BTC/USD
+💰 ${price}
+
+${buildSignalUI(result)}
+
+🎯 ${Math.round(result.confidence)}%`);
+});
+
+// ===============================
+// AUTO MODE
+// ===============================
+bot.onText(/📈 AUTO MODE/, async (msg) => {
+
+  const chatId = msg.chat.id;
+  autoUsers[chatId] = true;
+
+  bot.sendMessage(chatId, "🔥 AUTO MODE ON");
+
+  const loop = async () => {
+
+    if (!autoUsers[chatId]) return;
+
+    const closes = await generateCloses("BTC/USD", "1m");
     const result = smartSignal(closes);
 
     const price = closes?.[closes.length - 1] || "N/A";
 
-    const signalUI = buildSignalUI(result);
-
     bot.sendMessage(chatId,
-`📊 QUICK SIGNAL
+`📊 AUTO SIGNAL
 
-📈 Market: ${market}
-💰 Price: ${price}
+📈 BTC/USD
+💰 ${price}
 
-${signalUI}
+${buildSignalUI(result)}
 
-🎯 Confidence: ${Math.round(result.confidence)}%`
-    );
+🎯 ${Math.round(result.confidence)}%`);
 
-  } catch (err) {
-    console.log(err.message);
-    bot.sendMessage(chatId, "❌ Error generating signal");
-  }
+    setTimeout(loop, 15000);
+  };
+
+  loop();
 });
 
 // ===============================
-// CALLBACK FLOW
+// STOP AUTO
+// ===============================
+bot.onText(/STOP AUTO/, (msg) => {
+
+  autoUsers[msg.chat.id] = false;
+  bot.sendMessage(msg.chat.id, "⛔ AUTO STOPPED");
+});
+
+// ===============================
+// INLINE FLOW
 // ===============================
 bot.on("callback_query", async (query) => {
 
@@ -160,23 +191,6 @@ bot.on("callback_query", async (query) => {
 
     await bot.answerCallbackQuery(query.id);
 
-    // START
-    if (query.data === "start") {
-
-      return bot.editMessageText(
-`⚡ MARKET SCANNER`,
-{
-  chat_id: chatId,
-  message_id: query.message.message_id,
-  reply_markup: {
-    inline_keyboard: [
-      [{ text: "🔄 GENERATE MARKETS", callback_data: "gen_market" }]
-    ]
-  }
-});
-    }
-
-    // GENERATE MARKETS
     if (query.data === "gen_market") {
 
       const markets = await generateMarkets();
@@ -189,14 +203,14 @@ bot.on("callback_query", async (query) => {
   chat_id: chatId,
   message_id: query.message.message_id,
   reply_markup: {
-    inline_keyboard: markets.map(m => ([
-      { text: m, callback_data: "m_" + m }
-    ]))
+    inline_keyboard: markets.map(m => ([{
+      text: m,
+      callback_data: "m_" + m
+    }]))
   }
 });
     }
 
-    // MARKET
     if (query.data.startsWith("m_")) {
 
       const market = query.data.replace("m_", "");
@@ -205,9 +219,7 @@ bot.on("callback_query", async (query) => {
       userState[chatId].market = market;
 
       return bot.editMessageText(
-`📈 SELECT TIMEFRAME
-
-📊 ${market}`,
+`📈 SELECT TIMEFRAME`,
 {
   chat_id: chatId,
   message_id: query.message.message_id,
@@ -221,16 +233,11 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // TIMEFRAME + ANALYSIS
     if (query.data.startsWith("t_")) {
 
       const timeframe = query.data.split("_")[1];
 
-      if (!userState[chatId] || !userState[chatId].market) {
-        return bot.sendMessage(chatId, "❌ Select market first");
-      }
-
-      const market = userState[chatId].market;
+      const market = userState[chatId]?.market || "BTC/USD";
 
       const loading = await bot.sendMessage(chatId,
 `⚡ ANALYSING...
@@ -240,42 +247,33 @@ bot.on("callback_query", async (query) => {
 
       setTimeout(async () => {
 
-        let closes;
-
-        try {
-          closes = await generateCloses(market, timeframe);
-        } catch {
-          closes = [100, 101, 102, 101, 103];
-        }
-
+        const closes = await generateCloses(market, timeframe);
         const result = smartSignal(closes);
-        const price = closes?.[closes.length - 1] || "N/A";
 
-        const signalUI = buildSignalUI(result);
+        const price = closes?.[closes.length - 1] || "N/A";
 
         await bot.editMessageText(
 `📊 SIGNAL READY
 
 📈 ${market}
-💰 Price: ${price}
-📊 Timeframe: ${timeframe}
+💰 ${price}
+📊 ${timeframe}
 
-${signalUI}
+${buildSignalUI(result)}
 
-🎯 Confidence: ${Math.round(result.confidence)}%
+🎯 ${Math.round(result.confidence)}%
 
-⚡ MAX AI BOT`,
+⚡ MAX BOT`,
 {
   chat_id: chatId,
   message_id: loading.message_id
 });
 
       }, 12000);
-
     }
 
   } catch (err) {
-    console.log("BOT ERROR:", err.message);
+    console.log("ERROR:", err.message);
     bot.sendMessage(chatId, "❌ ERROR");
   }
 });
