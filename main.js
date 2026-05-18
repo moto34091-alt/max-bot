@@ -4,19 +4,10 @@ const express = require("express");
 const TelegramBot = require("node-telegram-bot-api");
 const mongoose = require("mongoose");
 
-// ⚠️ SAFE IMPORTS (évite crash MODULE_NOT_FOUND)
-let smartSignal, generateMarkets, generateCloses, Signal;
+const { smartSignal } = require("./signals");
+const { generateMarkets, generateCloses } = require("./market");
+const Signal = require("./models/Signal");
 
-try {
-  ({ smartSignal } = require("./signals"));
-  ({ generateMarkets, generateCloses } = require("./market"));
-  Signal = require("./models/Signal");
-} catch (e) {
-  console.log("❌ IMPORT ERROR:", e.message);
-  process.exit(1);
-}
-
-// ===============================
 const userState = {};
 
 // ===============================
@@ -41,12 +32,12 @@ mongoose.connect(process.env.MONGO_URL)
   });
 
 // ===============================
-// EXPRESS (RAILWAY FIX)
+// EXPRESS (RAILWAY)
 // ===============================
 const app = express();
 
 app.get("/", (req, res) => {
-  res.send("🚀 BOT RUNNING");
+  res.send("🚀 OTC BOT RUNNING");
 });
 
 const PORT = process.env.PORT || 3000;
@@ -63,12 +54,12 @@ const bot = new TelegramBot(process.env.BOT_TOKEN, {
 });
 
 // ===============================
+// START
+// ===============================
 bot.onText(/\/start/, (msg) => {
 
   bot.sendMessage(msg.chat.id,
-`🚀 OTC AI BOT
-
-Start analysis 👇`,
+`🚀 OTC AI BOT`,
 {
   reply_markup: {
     inline_keyboard: [
@@ -77,6 +68,42 @@ Start analysis 👇`,
   }
 });
 });
+
+// ===============================
+// UI BUILDER
+// ===============================
+function buildSignalUI(result) {
+
+  if (result.signal.includes("BUY")) {
+    return `
+████████████████
+
+      🟢 BUY
+        ⬆️⬆️⬆️
+
+████████████████
+`;
+  }
+
+  if (result.signal.includes("SELL")) {
+    return `
+████████████████
+
+      🔴 SELL
+        ⬇️⬇️⬇️
+
+████████████████
+`;
+  }
+
+  return `
+████████████████
+
+      ⚪ WAIT
+
+████████████████
+`;
+}
 
 // ===============================
 // CALLBACK FLOW
@@ -95,7 +122,7 @@ bot.on("callback_query", async (query) => {
 {
   reply_markup: {
     inline_keyboard: [
-      [{ text: "🔄 GENERATE REAL MARKETS", callback_data: "gen_market" }]
+      [{ text: "🔄 GENERATE MARKETS", callback_data: "gen_market" }]
     ]
   }
 });
@@ -138,14 +165,14 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // STEP 4
+    // STEP 4 - ANALYSIS
     if (query.data.startsWith("t_")) {
 
       const timeframe = query.data.split("_")[1];
       const market = userState[chatId].market || "BTC/USD";
 
       const loading = await bot.sendMessage(chatId,
-`⚡ ANALYSING...
+`⚡ ANALYSING MARKET...
 
 📊 ${market}
 📈 ${timeframe}`);
@@ -155,29 +182,30 @@ bot.on("callback_query", async (query) => {
         const closes = await generateCloses(market, timeframe);
         const result = smartSignal(closes);
 
-        // SAVE SAFE
+        let price = "N/A";
+
         try {
-          await Signal.create({
-            signal: result.signal,
-            confidence: result.confidence
-          });
-        } catch (e) {
-          console.log("DB ERROR:", e.message);
-        }
+          price = closes[closes.length - 1];
+        } catch {}
+
+        const signalUI = buildSignalUI(result);
 
         await bot.editMessageText(
-`📊 SIGNAL RESULT
+`📊 SIGNAL READY
 
-📈 ${market}
-📊 ${timeframe}
+📈 Market: ${market}
+💰 Price: ${price}
+📊 Timeframe: ${timeframe}
 
-${result.signal}
-🎯 ${result.confidence}%`,
-          {
-            chat_id: chatId,
-            message_id: loading.message_id
-          }
-        );
+${signalUI}
+
+🎯 Confidence: ${Math.round(result.confidence)}%
+
+⚡ OTC AI ENGINE`,
+{
+  chat_id: chatId,
+  message_id: loading.message_id
+});
 
       }, 12000);
 
