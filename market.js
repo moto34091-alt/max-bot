@@ -1,4 +1,4 @@
-function generateCloses(market = "BTC/USD", timeframe = "1m") {
+function generateCloses(market = "BTC/USD") {
 
   const base = {
     "BTC/USD": 65000,
@@ -18,15 +18,19 @@ function generateCloses(market = "BTC/USD", timeframe = "1m") {
   const closes = [];
 
   for (let i = 0; i < 30; i++) {
-
     const change = (Math.random() - 0.5) * (price * 0.01);
-
-    price = price + change;
-
+    price += change;
     closes.push(Number(price.toFixed(4)));
   }
 
   return closes;
 }
 
-module.exports = { generateCloses };
+function generateMarkets() {
+  return Object.keys({
+    "BTC/USD":1,"ETH/USD":1,"XRP/USD":1,"SOL/USD":1,"BNB/USD":1,
+    "DOGE/USD":1,"ADA/USD":1,"LTC/USD":1,"AVAX/USD":1,"TRX/USD":1
+  });
+}
+
+module.exports = { generateCloses, generateMarkets };
