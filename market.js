@@ -1,39 +1,32 @@
-const axios = require("axios");
+function generateCloses(market = "BTC/USD", timeframe = "1m") {
 
-const API_KEY = process.env.TWELVE_API_KEY;
+  const base = {
+    "BTC/USD": 65000,
+    "ETH/USD": 3200,
+    "XRP/USD": 0.6,
+    "SOL/USD": 140,
+    "BNB/USD": 580,
+    "DOGE/USD": 0.15,
+    "ADA/USD": 0.5,
+    "LTC/USD": 80,
+    "AVAX/USD": 35,
+    "TRX/USD": 0.12
+  };
 
-// ===============================
-async function generateMarkets() {
-  return ["BTC/USD", "ETH/USD", "SOL/USD", "XRP/USD", "BNB/USD"];
-}
+  let price = base[market] || 100;
 
-// ===============================
-async function generateCloses(symbol = "BTC/USD", interval = "1min") {
+  const closes = [];
 
-  try {
-    const res = await axios.get("https://api.twelvedata.com/time_series", {
-      params: {
-        symbol,
-        interval,
-        outputsize: 20,
-        apikey: API_KEY
-      }
-    });
+  for (let i = 0; i < 30; i++) {
 
-    if (!res.data || !res.data.values) {
-      throw new Error("NO DATA");
-    }
+    const change = (Math.random() - 0.5) * (price * 0.01);
 
-    return res.data.values
-      .reverse()
-      .map(c => parseFloat(c.close));
+    price = price + change;
 
-  } catch (err) {
-    console.log("MARKET ERROR:", err.message);
-
-    // fallback safe (NE JAMAIS CRASH)
-    return [100, 101, 102, 103, 104, 103, 105];
+    closes.push(Number(price.toFixed(4)));
   }
+
+  return closes;
 }
 
-module.exports = { generateMarkets, generateCloses };
+module.exports = { generateCloses };
