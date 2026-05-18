@@ -14,15 +14,11 @@ const userState = {};
 console.log("🚀 BOT STARTING...");
 
 // ===============================
-// ENV CHECK
-// ===============================
 if (!process.env.BOT_TOKEN || !process.env.MONGO_URL || !process.env.TWELVE_API_KEY) {
   console.log("❌ Missing ENV variables");
   process.exit(1);
 }
 
-// ===============================
-// MONGO
 // ===============================
 mongoose.connect(process.env.MONGO_URL)
   .then(() => console.log("✅ MongoDB CONNECTED"))
@@ -31,8 +27,6 @@ mongoose.connect(process.env.MONGO_URL)
     process.exit(1);
   });
 
-// ===============================
-// EXPRESS (RAILWAY)
 // ===============================
 const app = express();
 
@@ -47,14 +41,10 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 // ===============================
-// TELEGRAM BOT
-// ===============================
 const bot = new TelegramBot(process.env.BOT_TOKEN, {
   polling: true
 });
 
-// ===============================
-// START
 // ===============================
 bot.onText(/\/start/, (msg) => {
 
@@ -106,20 +96,25 @@ function buildSignalUI(result) {
 }
 
 // ===============================
-// CALLBACK FLOW
-// ===============================
 bot.on("callback_query", async (query) => {
 
   const chatId = query.message.chat.id;
 
   try {
 
-    // STEP 1
+    // 🔥 IMPORTANT: remove loading animation
+    await bot.answerCallbackQuery(query.id);
+
+    // =========================
+    // START (REMOVE BUTTONS)
+    // =========================
     if (query.data === "start") {
 
-      return bot.sendMessage(chatId,
+      return bot.editMessageText(
 `⚡ MARKET SCANNER`,
 {
+  chat_id: chatId,
+  message_id: query.message.message_id,
   reply_markup: {
     inline_keyboard: [
       [{ text: "🔄 GENERATE MARKETS", callback_data: "gen_market" }]
@@ -128,16 +123,20 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // STEP 2
+    // =========================
+    // GENERATE MARKETS
+    // =========================
     if (query.data === "gen_market") {
 
       const markets = await generateMarkets();
 
       userState[chatId] = { markets };
 
-      return bot.sendMessage(chatId,
+      return bot.editMessageText(
 `📊 SELECT MARKET`,
 {
+  chat_id: chatId,
+  message_id: query.message.message_id,
   reply_markup: {
     inline_keyboard: markets.map(m => ([
       { text: m, callback_data: "m_" + m }
@@ -146,15 +145,19 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // STEP 3
+    // =========================
+    // MARKET SELECT
+    // =========================
     if (query.data.startsWith("m_")) {
 
       const market = query.data.replace("m_", "");
       userState[chatId].market = market;
 
-      return bot.sendMessage(chatId,
+      return bot.editMessageText(
 `📈 SELECT TIMEFRAME`,
 {
+  chat_id: chatId,
+  message_id: query.message.message_id,
   reply_markup: {
     inline_keyboard: [
       [{ text: "1m", callback_data: "t_1m" }],
@@ -165,7 +168,9 @@ bot.on("callback_query", async (query) => {
 });
     }
 
-    // STEP 4 - ANALYSIS
+    // =========================
+    // ANALYSIS (REAL SIGNAL)
+    // =========================
     if (query.data.startsWith("t_")) {
 
       const timeframe = query.data.split("_")[1];
@@ -182,11 +187,7 @@ bot.on("callback_query", async (query) => {
         const closes = await generateCloses(market, timeframe);
         const result = smartSignal(closes);
 
-        let price = "N/A";
-
-        try {
-          price = closes[closes.length - 1];
-        } catch {}
+        const price = closes?.[closes.length - 1] || "N/A";
 
         const signalUI = buildSignalUI(result);
 
